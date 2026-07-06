@@ -57,9 +57,12 @@ async function syncPush(moduleId){
         action: "saveProgress",
         nama: STATE.user.nama,
         unit: STATE.user.unit,
+        whatsapp: STATE.user.whatsapp || "",
         moduleId: moduleId,
         completed: !!m.completed,
         score: m.score || 0,
+        selfCheck: JSON.stringify(m.selfCheck || []),
+        practice: m.practice || "",
         timestamp: new Date().toISOString()
       })
     });
@@ -74,9 +77,11 @@ async function syncPull(){
     if(data && data.rows){
       data.rows.forEach(r => {
         const existing = STATE.progress[r.moduleId] || {};
-        if(!existing.completed && r.completed){
-          STATE.progress[r.moduleId] = { ...existing, completed:true, score:r.score };
-        }
+        const merged = { ...existing };
+        if(!existing.completed && r.completed){ merged.completed = true; merged.score = r.score; }
+        if(!existing.practice && r.practice){ merged.practice = r.practice; }
+        if(!existing.selfCheck && r.selfCheck && r.selfCheck.length){ merged.selfCheck = r.selfCheck; }
+        STATE.progress[r.moduleId] = merged;
       });
       Store.setProgress(STATE.progress);
     }
@@ -170,6 +175,12 @@ function renderOnboarding(){
   ]);
   card.appendChild(nameField);
 
+  const waField = el("div", { class:"field" }, [
+    el("label", { for:"wa" }, "No. WhatsApp (opsional, untuk pengingat dari Media & Humas)"),
+    el("input", { type:"text", id:"wa", placeholder:"Contoh: 08123456789", autocomplete:"tel" })
+  ]);
+  card.appendChild(waField);
+
   const unitField = el("div", { class:"field" });
   unitField.appendChild(el("label", {}, "Unit Mengajar"));
   const grid = el("div", { class:"unit-grid" });
@@ -190,9 +201,10 @@ function renderOnboarding(){
   const startBtn = el("button", { class:"btn btn--primary btn--block" }, "Mulai Belajar →");
   startBtn.addEventListener("click", async () => {
     const nama = document.getElementById("nama").value.trim();
+    const whatsapp = document.getElementById("wa").value.trim();
     if(!nama){ toast("Isi nama Anda dulu ya."); return; }
     if(!chosenUnit){ toast("Pilih unit mengajar Anda dulu."); return; }
-    STATE.user = { nama, unit: chosenUnit, jenjang: UNIT_TO_JENJANG[chosenUnit] };
+    STATE.user = { nama, unit: chosenUnit, jenjang: UNIT_TO_JENJANG[chosenUnit], whatsapp };
     Store.setUser(STATE.user);
     toast(`Selamat datang, ${nama}!`);
     await syncPull();
@@ -380,6 +392,7 @@ function renderModule(mod){
       check[i] = input.checked;
       STATE.progress[mod.id] = { ...p, selfCheck: check };
       Store.setProgress(STATE.progress);
+      syncPush(mod.id);
     });
     item.appendChild(input);
     item.appendChild(el("span", {}, label));
@@ -394,6 +407,7 @@ function renderModule(mod){
       const p = STATE.progress[mod.id] || {};
       STATE.progress[mod.id] = { ...p, practice: practiceArea.value };
       Store.setProgress(STATE.progress);
+      syncPush(mod.id);
     }, 500);
   });
   wrap.appendChild(el("div", { class:"section" }, [
