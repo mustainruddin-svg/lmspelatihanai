@@ -6,7 +6,7 @@ const CONFIG = {
   // Tempel URL Web App Google Apps Script di sini setelah deploy
   // (lihat backend/README.md). Contoh:
   // "https://script.google.com/macros/s/XXXXXXXXXXXXXXXX/exec"
-  API_URL: "",
+  API_URL: "https://script.google.com/macros/s/AKfycbzMk7XmgV8HKIgkZB_OMqgETLyEV2ITRGydh8zbNUaBYT3h2JgtL6w7FyvmvnpWhkX9VA/exec",
 
   // Ambang lulus kuis per modul (0.66 = minimal 66% benar)
   PASS_SCORE: 0.66,
