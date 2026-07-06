@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rekap Progres — AI untuk Guru</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="admin-app"></div>
+
+  <script src="config.js"></script>
+  <script src="modules-data.js"></script>
+  <script>
+  const UNIT_LABEL = { paud:"PAUD", sdit:"SDIT", smpit:"SMPIT", smait:"SMAIT" };
+  const root = document.getElementById("admin-app");
+
+  function el(tag, attrs = {}, children = []){
+    const node = document.createElement(tag);
+    Object.entries(attrs).forEach(([k,v]) => {
+      if(k === "class") node.className = v;
+      else if(k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
+      else node.setAttribute(k, v);
+    });
+    (Array.isArray(children) ? children : [children]).forEach(c => {
+      if(c === null || c === undefined) return;
+      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
+    return node;
+  }
+
+  function renderGate(){
+    root.innerHTML = "";
+    const box = el("div", { class:"onboard" }, el("div", { class:"onboard__card pin-gate" }, [
+      el("span", { class:"onboard__eyebrow" }, "Khusus Tim Media & Humas"),
+      el("h1", { class:"onboard__title h-display" }, "Rekap Progres Guru"),
+      el("p", { class:"onboard__desc" }, "Masukkan PIN untuk membuka rekap penyelesaian modul seluruh unit."),
+      (() => {
+        const field = el("div", { class:"field" }, [
+          el("label", { for:"pin" }, "PIN"),
+          el("input", { type:"text", id:"pin", placeholder:"••••" })
+        ]);
+        return field;
+      })(),
+      el("button", { class:"btn btn--primary btn--block", onclick: () => {
+        const val = document.getElementById("pin").value.trim();
+        if(val === CONFIG.ADMIN_PIN){ renderDashboard(); }
+        else { toastMsg("PIN salah, coba lagi."); }
+      }}, "Buka Rekap")
+    ]));
+    root.appendChild(box);
+  }
+
+  function toastMsg(msg){
+    let t = document.getElementById("admin-toast");
+    if(!t){ t = el("div", { id:"admin-toast", class:"toast" }); document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add("toast--show");
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove("toast--show"), 2600);
+  }
+
+  async function renderDashboard(){
+    root.innerHTML = "";
+    const shell = el("div", {});
+    shell.appendChild(el("div", { class:"topbar" }, [
+      el("div", { class:"topbar__brand" }, [
+        el("div", { class:"topbar__mark" }, "AR"),
+        el("div", {}, [
+          el("div", { class:"topbar__title h-display" }, "Rekap Progres Guru"),
+          el("div", { class:"topbar__sub" }, "Yayasan Ar-Rahmah Sulawesi — Media & Humas")
+        ])
+      ]),
+      el("a", { class:"link-quiet", href:"index.html" }, "← Ke halaman guru")
+    ]));
+
+    const main = el("main", {}, el("div", { class:"container" }));
+    const container = main.firstChild;
+    container.appendChild(el("h1", { class:"h-display", style:"font-size:22px;" }, "Ringkasan Penyelesaian Modul"));
+
+    if(!CONFIG.API_URL){
+      container.appendChild(el("div", { class:"card", style:"margin-top:16px;" }, [
+        el("p", {}, "Backend Google Apps Script belum dihubungkan. Rekap lintas-guru memerlukan CONFIG.API_URL diisi di config.js (lihat backend/README.md)."),
+        el("p", {}, "Selama itu, setiap guru tetap bisa belajar secara mandiri — progres tersimpan di perangkat masing-masing.")
+      ]));
+      root.appendChild(shell);
+      shell.appendChild(main);
+      return;
+    }
+
+    container.appendChild(el("p", { style:"color:var(--slate); font-size:13.5px; margin-top:-6px;" }, "Memuat data dari Google Sheet..."));
+    root.appendChild(shell);
+    shell.appendChild(main);
+
+    try{
+      const res = await fetch(`${CONFIG.API_URL}?action=getAllProgress`);
+      const data = await res.json();
+      const rows = data.rows || [];
+
+      // Agregasi per guru
+      const byUser = {};
+      rows.forEach(r => {
+        const key = `${r.nama}__${r.unit}`;
+        if(!byUser[key]) byUser[key] = { nama:r.nama, unit:r.unit, completed:new Set(), lastUpdate:r.timestamp };
+        if(r.completed) byUser[key].completed.add(r.moduleId);
+        if(new Date(r.timestamp) > new Date(byUser[key].lastUpdate)) byUser[key].lastUpdate = r.timestamp;
+      });
+      const users = Object.values(byUser).sort((a,b) => b.completed.size - a.completed.size);
+
+      container.innerHTML = "";
+      container.appendChild(el("h1", { class:"h-display", style:"font-size:22px;" }, "Ringkasan Penyelesaian Modul"));
+
+      if(users.length === 0){
+        container.appendChild(el("div", { class:"admin-empty" }, "Belum ada data guru yang tercatat."));
+        return;
+      }
+
+      const table = el("table", { class:"admin-table" });
+      const thead = el("thead", {}, el("tr", {}, [
+        el("th", {}, "Nama Guru"), el("th", {}, "Unit"), el("th", {}, "Modul Selesai"),
+        el("th", {}, "Progres"), el("th", {}, "Update Terakhir")
+      ]));
+      const tbody = el("tbody", {});
+      users.forEach(u => {
+        const pct = Math.round((u.completed.size / MODULES.length) * 100);
+        tbody.appendChild(el("tr", {}, [
+          el("td", {}, u.nama),
+          el("td", {}, UNIT_LABEL[u.unit] || u.unit),
+          el("td", {}, `${u.completed.size} / ${MODULES.length}`),
+          el("td", {}, el("div", { class:"progress-track", style:"width:120px;" }, el("div", { class:"progress-fill", style:`width:${pct}%` }))),
+          el("td", {}, u.lastUpdate ? new Date(u.lastUpdate).toLocaleString("id-ID") : "-")
+        ]));
+      });
+      table.appendChild(thead);
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }catch(e){
+      container.innerHTML = "";
+      container.appendChild(el("div", { class:"admin-empty" }, "Gagal memuat data. Pastikan URL Web App Google Apps Script sudah benar dan sudah di-deploy dengan akses \"Siapa saja\"."));
+    }
+  }
+
+  renderGate();
+  </script>
+</body>
+</html>
